@@ -7,10 +7,9 @@ import {
   getLocalSnapshots,
   type LocalDocument,
   type LocalSnapshot,
-  type SyncQueueItem,
 } from "@/lib/local-db"
 import { syncEngine, type SyncStatus } from "@/lib/sync-engine"
-import { getLamportTimestamp } from "@/lib/conflict-resolver"
+import useSocketHook from "./use-socket"
 
 export function useSyncStatus(): SyncStatus {
   const [status, setStatus] = useState<SyncStatus>("idle")
@@ -44,6 +43,7 @@ export function useLocalDocument(documentId: string | undefined) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const pendingOps = useRef(0)
+  const { emit, on } = useSocketHook(documentId)
 
   useEffect(() => {
     if (!documentId) {
@@ -52,11 +52,17 @@ export function useLocalDocument(documentId: string | undefined) {
     }
 
     let cancelled = false
+    const docId: string = documentId
 
     async function load() {
       try {
         setLoading(true)
-        const local = documentId ? await getLocalDocument(documentId) : undefined
+        syncEngine.trackDocument(docId)
+        let local = await getLocalDocument(docId)
+        if (!local) {
+          await syncEngine.pullDocument(docId)
+          local = await getLocalDocument(docId)
+        }
         if (!cancelled) {
           if (local) {
             setDoc(local)
@@ -73,6 +79,29 @@ export function useLocalDocument(documentId: string | undefined) {
 
     load()
 
+    const unsubContent = on("document:updated", async ({ content, title, version }) => {
+      if (cancelled) return
+      const d = await getLocalDocument(docId)
+      if (d && version > d.version) {
+        if (d.isDirty) {
+          await localDb.documents.put({ ...d, version, updatedAt: Date.now() })
+          setDoc((prev) => prev ? { ...prev, version } : null)
+        } else {
+          await localDb.documents.put({ ...d, content, title, version, updatedAt: Date.now(), isDirty: false })
+          setDoc((prev) => prev ? { ...prev, content, title, version } : null)
+        }
+      }
+    })
+
+    const unsubTitle = on("document:title:updated", async ({ title }) => {
+      if (cancelled) return
+      const d = await getLocalDocument(docId)
+      if (d) {
+        await localDb.documents.put({ ...d, title, updatedAt: Date.now(), isDirty: d.isDirty })
+        setDoc((prev) => prev ? { ...prev, title } : null)
+      }
+    })
+
     const interval = setInterval(async () => {
       if (cancelled || !documentId) return
       try {
@@ -87,16 +116,20 @@ export function useLocalDocument(documentId: string | undefined) {
     return () => {
       cancelled = true
       clearInterval(interval)
+      unsubContent()
+      unsubTitle()
+      syncEngine.untrackDocument(docId)
     }
-  }, [documentId])
+  }, [documentId, on])
 
   const updateTitle = useCallback(
     async (title: string) => {
       if (!doc || !documentId) return
       await syncEngine.updateDocumentContent(documentId, doc.content, title)
+      emit("document:title:update", { documentId, title })
       setDoc((prev) => (prev ? { ...prev, title, updatedAt: Date.now() } : null))
     },
-    [doc, documentId],
+    [doc, documentId, emit],
   )
 
   const updateContent = useCallback(
@@ -104,30 +137,11 @@ export function useLocalDocument(documentId: string | undefined) {
       if (!doc || !documentId) return
       pendingOps.current += 1
       await syncEngine.updateDocumentContent(documentId, content, doc.title)
+      emit("document:update", { documentId, content, title: doc.title, version: doc.version + 1 })
       setDoc((prev) => (prev ? { ...prev, content, version: prev.version + 1, updatedAt: Date.now() } : null))
       pendingOps.current -= 1
     },
-    [doc, documentId],
-  )
-
-  const insertText = useCallback(
-    async (position: number, text: string) => {
-      if (!documentId) return
-      pendingOps.current += 1
-      await syncEngine.insertText(documentId, position, text)
-      pendingOps.current -= 1
-    },
-    [documentId],
-  )
-
-  const deleteText = useCallback(
-    async (position: number, length: number) => {
-      if (!documentId) return
-      pendingOps.current += 1
-      await syncEngine.deleteText(documentId, position, length)
-      pendingOps.current -= 1
-    },
-    [documentId],
+    [doc, documentId, emit],
   )
 
   const saveSnapshot = useCallback(
@@ -145,8 +159,6 @@ export function useLocalDocument(documentId: string | undefined) {
     pendingOps: pendingOps.current,
     updateTitle,
     updateContent,
-    insertText,
-    deleteText,
     saveSnapshot,
   }
 }
@@ -212,6 +224,7 @@ export function useDocumentList() {
     let cancelled = false
 
     async function load() {
+      await syncEngine.fetchDocuments()
       const docs = await localDb.documents.orderBy("updatedAt").reverse().toArray()
       if (!cancelled) {
         setDocuments(docs)

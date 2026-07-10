@@ -70,7 +70,7 @@ export async function getLocalDocument(id: string): Promise<LocalDocument | unde
 }
 
 export async function saveLocalDocument(doc: LocalDocument): Promise<void> {
-  await localDb.documents.put({ ...doc, isDirty: true, syncedAt: null })
+  await localDb.documents.put(doc)
 }
 
 export async function markDocumentSynced(id: string): Promise<void> {
@@ -98,11 +98,12 @@ export async function markOperationSynced(id: string): Promise<void> {
 }
 
 export async function getUnsyncedOperations(documentId: string): Promise<LocalOperation[]> {
-  return localDb.operations
+  const ops = await localDb.operations
     .where("documentId")
     .equals(documentId)
     .filter((op) => !op.synced)
     .sortBy("lamport")
+  return ops.filter((op) => typeof op.version === "number" && typeof op.lamport === "number")
 }
 
 export async function getLocalSnapshots(documentId: string): Promise<LocalSnapshot[]> {
@@ -143,4 +144,19 @@ export async function clearSyncedData(documentId: string): Promise<void> {
   await localDb.operations.where("documentId").equals(documentId).filter((op) => op.synced).delete()
   await localDb.snapshots.where("documentId").equals(documentId).filter((s) => s.synced).delete()
   await localDb.documents.where("id").equals(documentId).modify({ isDirty: false, syncedAt: Date.now() })
+}
+
+export async function cleanupCorruptedData(): Promise<void> {
+  const allOps = await localDb.operations.toArray()
+  const corrupted = allOps.filter((op) => op.version == null || op.lamport == null || Number.isNaN(op.version) || Number.isNaN(op.lamport))
+  for (const op of corrupted) {
+    await localDb.operations.delete(op.id)
+  }
+  const queue = await localDb.syncQueue.toArray()
+  for (const item of queue) {
+    const p = item.payload as Record<string, unknown> | undefined
+    if (p && (p.version == null || Number.isNaN(Number(p.version)))) {
+      await localDb.syncQueue.delete(item.id)
+    }
+  }
 }

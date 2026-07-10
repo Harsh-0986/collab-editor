@@ -3,91 +3,52 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user's documents (owned or member)
     const documents = await prisma.document.findMany({
       where: {
         OR: [
-          {
-            ownerId: session.user.id,
-          },
-          {
-            members: {
-              some: {
-                userId: session.user.id,
-              },
-            },
-          },
+          { ownerId: session.user.id },
+          { members: { some: { userId: session.user.id } } },
         ],
       },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            members: true,
-            snapshots: true,
-          },
-        },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        version: true,
+        ownerId: true,
+        createdAt: true,
+        updatedAt: true,
       },
-      orderBy: {
-        updatedAt: "desc",
-      },
+      orderBy: { updatedAt: "desc" },
     })
 
     return NextResponse.json(documents)
   } catch (error) {
-    console.error("Error fetching documents:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { title, content = "", isPublic = false } = await request.json()
+    const { title, content, id } = await request.json()
 
-    if (!title) {
-      return NextResponse.json({ error: "Title is required" }, { status: 400 })
-    }
-
-    // Create new document
     const document = await prisma.document.create({
       data: {
-        title,
-        content,
-        isPublic,
+        ...(id && { id }),
+        title: title || "Untitled",
+        content: content || "",
         ownerId: session.user.id,
         members: {
           create: {
@@ -95,42 +56,20 @@ export async function POST(request: NextRequest) {
             role: "OWNER",
           },
         },
-        snapshots: {
-          create: {
-            version: 1,
-            content,
-            createdBy: session.user.id,
-          },
-        },
       },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        version: true,
+        ownerId: true,
+        createdAt: true,
+        updatedAt: true,
       },
     })
 
     return NextResponse.json(document, { status: 201 })
   } catch (error) {
-    console.error("Error creating document:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

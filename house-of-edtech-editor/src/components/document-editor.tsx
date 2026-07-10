@@ -19,6 +19,8 @@ import {
   History,
 } from "lucide-react"
 import { Header } from "./header"
+import { HistoryDialog } from "./history-dialog"
+import { InviteDialog } from "./invite-dialog"
 import { useLocalDocument, useSyncStatus } from "@/hooks/use-local-document"
 
 interface DocumentEditorProps {
@@ -31,8 +33,13 @@ export function DocumentEditor({ documentId }: DocumentEditorProps) {
   const syncStatus = useSyncStatus()
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [localTitle, setLocalTitle] = useState("")
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const lastContentRef = useRef("")
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleInitRef = useRef(false)
 
   const editor = useEditor({
     extensions: [
@@ -43,7 +50,15 @@ export function DocumentEditor({ documentId }: DocumentEditorProps) {
     ],
     content: "",
     autofocus: "end",
+    immediatelyRender: false,
   })
+
+  useEffect(() => {
+    if (doc && !titleInitRef.current) {
+      setLocalTitle(doc.title)
+      titleInitRef.current = true
+    }
+  }, [doc?.title])
 
   useEffect(() => {
     if (editor && doc && doc.content !== lastContentRef.current) {
@@ -84,7 +99,11 @@ export function DocumentEditor({ documentId }: DocumentEditorProps) {
   }
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    updateTitle(e.target.value)
+    setLocalTitle(e.target.value)
+    if (titleTimeoutRef.current) clearTimeout(titleTimeoutRef.current)
+    titleTimeoutRef.current = setTimeout(() => {
+      updateTitle(e.target.value)
+    }, 500)
   }
 
   if (loading) {
@@ -204,7 +223,7 @@ export function DocumentEditor({ documentId }: DocumentEditorProps) {
       <div className="flex flex-col flex-1">
         <div className="border-b px-6 py-4">
           <Input
-            value={doc?.title ?? ""}
+            value={localTitle}
             onChange={handleTitleChange}
             className="text-xl font-semibold border-none px-0 focus-visible:ring-0"
             placeholder="Document title..."
@@ -226,11 +245,11 @@ export function DocumentEditor({ documentId }: DocumentEditorProps) {
 
         <div className="border-t px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => {}}>
+            <Button variant="outline" size="sm" onClick={() => setInviteOpen(true)}>
               <Users className="h-4 w-4 mr-2" />
               Users
             </Button>
-            <Button variant="outline" size="sm" onClick={() => {}}>
+            <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
               <History className="h-4 w-4 mr-2" />
               History
             </Button>
@@ -241,6 +260,9 @@ export function DocumentEditor({ documentId }: DocumentEditorProps) {
           </Button>
         </div>
       </div>
+
+      <HistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} documentId={documentId} />
+      <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} documentId={documentId} />
     </div>
   )
 }

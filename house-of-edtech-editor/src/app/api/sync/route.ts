@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { validateSyncPayload } from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,31 +10,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    let raw: unknown
-    try {
-      raw = await request.json()
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+    const raw = await request.json()
+    const stringified = JSON.stringify(raw)
+    if (stringified.length > 100 * 1024) {
+      return NextResponse.json({ error: "Payload too large" }, { status: 413 })
     }
 
-    let payload: ReturnType<typeof validateSyncPayload>
-    try {
-      payload = validateSyncPayload(raw)
-    } catch (err) {
-      if (err instanceof Error) {
-        return NextResponse.json({ error: err.message }, { status: 422 })
+    if (!raw.documentId || raw.version == null || typeof raw.version !== "number") {
+      console.error("Invalid sync payload:", JSON.stringify(raw, null, 2))
+      return NextResponse.json({ error: "Invalid payload: documentId and version are required" }, { status: 400 })
+    }
+
+    const { documentId, content, title, version, operations, snapshot } = raw as {
+      documentId: string
+      content?: string
+      title?: string
+      version: number
+      operations?: Array<{
+        documentId: string
+        type: string
+        data: unknown
+        version: number
+        lamport: number
+        clientId: string
+      }>
+      snapshot?: {
+        id: string
+        version: number
+        title: string
+        content: string
+        createdBy: string
       }
-      return NextResponse.json({ error: "Invalid payload" }, { status: 422 })
     }
-
-    const { documentId, operations, lamport } = payload
 
     const document = await prisma.document.findUnique({
       where: { id: documentId },
       include: {
-        members: {
-          where: { userId: session.user.id },
-        },
+        members: { where: { userId: session.user.id } },
       },
     })
 
@@ -45,47 +56,64 @@ export async function POST(request: NextRequest) {
 
     const isOwner = document.ownerId === session.user.id
     const isEditor = document.members.some(
-      (m) => m.userId === session.user.id && m.role === "EDITOR",
-    )
-    const isViewer = document.members.some(
-      (m) => m.userId === session.user.id && m.role === "VIEWER",
+      (m) => m.userId === session.user.id && (m.role === "EDITOR" || m.role === "OWNER"),
     )
 
-    if (!isOwner && !isEditor && !isViewer) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 })
-    }
-
-    if (isViewer) {
+    if (!isOwner && !isEditor) {
       return NextResponse.json({ error: "Viewers cannot push updates" }, { status: 403 })
     }
 
-    for (const op of operations) {
-      await prisma.operation.create({
+    if (operations && operations.length > 0) {
+      for (const op of operations) {
+        await prisma.operation.create({
+          data: {
+            document: { connect: { id: documentId } },
+            version: op.version,
+            type: op.type as any,
+            data: op.data as any,
+            user: { connect: { id: session.user.id } },
+          } as any,
+        })
+      }
+    }
+
+    if (snapshot) {
+      await prisma.documentSnapshot.create({
         data: {
-          documentId,
-          version: op.version,
-          type: op.type as any,
-          data: op.data as any,
-          createdBy: session.user.id,
+          document: { connect: { id: documentId } },
+          version: snapshot.version,
+          content: snapshot.content,
+          user: { connect: { id: snapshot.createdBy } },
+        } as any,
+      })
+    }
+
+    if (content !== undefined || title !== undefined) {
+      await prisma.document.update({
+        where: { id: documentId },
+        data: {
+          ...(content !== undefined && { content }),
+          ...(title !== undefined && { title }),
+          version,
         },
       })
     }
 
-    await prisma.document.update({
+    // Return current server state
+    const updated = await prisma.document.findUnique({
       where: { id: documentId },
-      data: { version: lamport },
+      select: { content: true, title: true, version: true },
     })
 
-    const remoteOps = await prisma.operation.findMany({
+    const serverOps = await prisma.operation.findMany({
       where: { documentId },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 100,
     })
 
     return NextResponse.json({
-      accepted: operations.length,
-      lamport,
-      remoteOps: remoteOps.reverse().map((op) => ({
+      document: updated,
+      operations: serverOps.reverse().map((op) => ({
         id: op.id,
         documentId: op.documentId,
         type: op.type,
@@ -97,6 +125,7 @@ export async function POST(request: NextRequest) {
       })),
     })
   } catch (error) {
+    console.error("Sync API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

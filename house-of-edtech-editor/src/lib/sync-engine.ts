@@ -11,6 +11,7 @@ import {
   saveLocalSnapshot,
   enqueueSync,
   dequeueSync,
+  cleanupCorruptedData,
   type LocalDocument,
   type LocalOperation,
   type LocalSnapshot,
@@ -50,10 +51,18 @@ class SyncEngine {
     }
   }
 
+  private activeDocumentIds: Set<string> = new Set()
+
   start(): void {
     if (this.isRunning || !this.isOnline) return
     this.isRunning = true
-    this.syncInterval = setInterval(() => this.processQueue(), 5000)
+    cleanupCorruptedData()
+    this.fetchDocuments()
+    this.syncInterval = setInterval(() => {
+      this.fetchDocuments()
+      this.pullActiveDocuments()
+      this.processQueue()
+    }, 5000)
     this.processQueue()
   }
 
@@ -65,9 +74,25 @@ class SyncEngine {
     }
   }
 
+  trackDocument(documentId: string): void {
+    this.activeDocumentIds.add(documentId)
+  }
+
+  untrackDocument(documentId: string): void {
+    this.activeDocumentIds.delete(documentId)
+  }
+
+  private async pullActiveDocuments(): Promise<void> {
+    const ids = Array.from(this.activeDocumentIds)
+    for (const id of ids) {
+      await this.pullDocument(id)
+    }
+  }
+
   async createDocument(title: string, ownerId: string): Promise<LocalDocument> {
+    const id = uuidv4()
     const doc: LocalDocument = {
-      id: uuidv4(),
+      id,
       title,
       content: "",
       version: 1,
@@ -77,6 +102,28 @@ class SyncEngine {
       isDirty: true,
     }
     await saveLocalDocument(doc)
+
+    if (this.isOnline) {
+      try {
+        const res = await fetch("/api/documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, title, content: "" }),
+        })
+        if (res.ok) {
+          const serverDoc = await res.json()
+          await saveLocalDocument({
+            ...doc,
+            version: serverDoc.version,
+            syncedAt: Date.now(),
+            isDirty: false,
+          })
+          return doc
+        }
+      } catch {
+      }
+    }
+
     await enqueueSync({
       documentId: doc.id,
       action: "CREATE_DOCUMENT",
@@ -93,13 +140,14 @@ class SyncEngine {
     const doc = await getLocalDocument(documentId)
     if (!doc) return
 
+    const nextVersion = (doc.version ?? 0) + 1
     const lamport = getLamportTimestamp()
     const op: LocalOperation = {
       id: uuidv4(),
       documentId,
       type: "UPDATE",
       data: { text: content, title },
-      version: doc.version + 1,
+      version: nextVersion,
       lamport,
       clientId: doc.ownerId,
       createdAt: Date.now(),
@@ -107,12 +155,12 @@ class SyncEngine {
     }
 
     await saveLocalOperation(op)
-    await saveLocalDocument({ ...doc, content, title, version: doc.version + 1, updatedAt: Date.now(), isDirty: true })
+    await saveLocalDocument({ ...doc, content, title, version: nextVersion, updatedAt: Date.now(), isDirty: true })
 
     await enqueueSync({
       documentId,
       action: "UPDATE_DOCUMENT",
-      payload: { content, title, version: doc.version + 1, lamport },
+      payload: { content, title, version: nextVersion, lamport },
     })
   }
 
@@ -120,13 +168,14 @@ class SyncEngine {
     const doc = await getLocalDocument(documentId)
     if (!doc) return
 
+    const nextVersion = (doc.version ?? 0) + 1
     const lamport = getLamportTimestamp()
     const op: LocalOperation = {
       id: uuidv4(),
       documentId,
       type: "INSERT",
       data: { position, text },
-      version: doc.version + 1,
+      version: nextVersion,
       lamport,
       clientId: doc.ownerId,
       createdAt: Date.now(),
@@ -135,7 +184,7 @@ class SyncEngine {
 
     await saveLocalOperation(op)
     const newContent = doc.content.slice(0, position) + text + doc.content.slice(position)
-    await saveLocalDocument({ ...doc, content: newContent, version: doc.version + 1, updatedAt: Date.now(), isDirty: true })
+    await saveLocalDocument({ ...doc, content: newContent, version: nextVersion, updatedAt: Date.now(), isDirty: true })
 
     await enqueueSync({
       documentId,
@@ -148,6 +197,7 @@ class SyncEngine {
     const doc = await getLocalDocument(documentId)
     if (!doc) return
 
+    const nextVersion = (doc.version ?? 0) + 1
     const deletedText = doc.content.slice(position, position + length)
     const lamport = getLamportTimestamp()
     const op: LocalOperation = {
@@ -155,7 +205,7 @@ class SyncEngine {
       documentId,
       type: "DELETE",
       data: { position, text: deletedText },
-      version: doc.version + 1,
+      version: nextVersion,
       lamport,
       clientId: doc.ownerId,
       createdAt: Date.now(),
@@ -164,7 +214,7 @@ class SyncEngine {
 
     await saveLocalOperation(op)
     const newContent = doc.content.slice(0, position) + doc.content.slice(position + length)
-    await saveLocalDocument({ ...doc, content: newContent, version: doc.version + 1, updatedAt: Date.now(), isDirty: true })
+    await saveLocalDocument({ ...doc, content: newContent, version: nextVersion, updatedAt: Date.now(), isDirty: true })
 
     await enqueueSync({
       documentId,
@@ -189,91 +239,107 @@ class SyncEngine {
     }
 
     await saveLocalSnapshot(snapshot)
-    await enqueueSync({
-      documentId,
-      action: "CREATE_SNAPSHOT",
-      payload: snapshot,
-    })
-  }
 
-  async pullChanges(documentId: string): Promise<LocalOperation[]> {
-    try {
-      const response = await fetch(`/api/operations?documentId=${encodeURIComponent(documentId)}`)
-      if (!response.ok) return []
-
-      const remoteOps: Array<{ id: string; type: string; data: unknown; version: number; lamport: number; createdBy: string; createdAt: string }> = await response.json()
-      if (!Array.isArray(remoteOps)) return []
-
-      const localOps = await getUnsyncedOperations(documentId)
-      const baseVersion = (await getLocalDocument(documentId))?.version ?? 0
-
-      const mappedLocal: LocalOperation[] = localOps.map((op) => ({
-        ...op,
-        lamport: op.lamport,
-      }))
-
-      const mappedRemote: LocalOperation[] = remoteOps.map((op) => ({
-        id: op.id,
-        documentId,
-        type: op.type as "INSERT" | "UPDATE" | "DELETE",
-        data: op.data,
-        version: op.version,
-        lamport: op.lamport,
-        clientId: op.createdBy,
-        createdAt: new Date(op.createdAt).getTime(),
-        synced: true,
-      }))
-
-      const resolved: ResolvedOperation = resolveConflicts(mappedLocal, mappedRemote, baseVersion)
-
-      for (const op of resolved.ops) {
-        updateLamportClock(op.lamport)
-      }
-
-      const doc = await getLocalDocument(documentId)
-      if (doc) {
-        let mergedContent = doc.content
-        for (const op of resolved.ops) {
-          if (!localOps.find((lo) => lo.id === op.id)) {
-            mergedContent = transformOperation(mergedContent, op)
-          }
-        }
-        await saveLocalDocument({
-          ...doc,
-          content: mergedContent,
-          version: resolved.baseVersion,
-          updatedAt: Date.now(),
-          isDirty: localOps.length > 0,
+    if (this.isOnline) {
+      try {
+        await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            documentId,
+            version: doc.version,
+            content: doc.content,
+            title: doc.title,
+            snapshot: {
+              id: snapshot.id,
+              version: snapshot.version,
+              title: snapshot.title,
+              content: snapshot.content,
+              createdBy: snapshot.createdBy,
+            },
+          }),
+        })
+      } catch {
+        await enqueueSync({
+          documentId,
+          action: "CREATE_SNAPSHOT",
+          payload: snapshot,
         })
       }
+    } else {
+      await enqueueSync({
+        documentId,
+        action: "CREATE_SNAPSHOT",
+        payload: snapshot,
+      })
+    }
+  }
 
-      for (const op of resolved.ops) {
-        await saveLocalOperation({ ...op, synced: true })
+  async pullDocument(documentId: string): Promise<void> {
+    try {
+      const res = await fetch(`/api/documents/${documentId}`)
+      if (!res.ok) return
+
+      const serverDoc = await res.json()
+      const local = await getLocalDocument(documentId)
+
+      if (!local) {
+        await saveLocalDocument({
+          id: documentId,
+          title: serverDoc.title ?? "Untitled",
+          content: serverDoc.content ?? "",
+          version: serverDoc.version ?? 1,
+          ownerId: serverDoc.ownerId ?? "",
+          updatedAt: Date.now(),
+          syncedAt: Date.now(),
+          isDirty: false,
+        })
+        return
       }
 
-      return resolved.ops
+      if (serverDoc.version <= local.version) return
+
+      await saveLocalDocument({
+        ...local,
+        content: local.isDirty ? local.content : serverDoc.content ?? local.content,
+        title: local.isDirty ? local.title : serverDoc.title ?? local.title,
+        version: serverDoc.version,
+        updatedAt: Date.now(),
+        syncedAt: Date.now(),
+        isDirty: local.isDirty,
+      })
     } catch {
-      return []
     }
   }
 
   async pushChanges(documentId: string): Promise<boolean> {
     try {
-      const unsyncedOps = await getUnsyncedOperations(documentId)
-      if (unsyncedOps.length === 0) return true
+      const doc = await getLocalDocument(documentId)
+      if (!doc) return false
 
-      const payload = {
+      const unsyncedOps = await getUnsyncedOperations(documentId)
+
+      const safeVersion = typeof doc.version === "number" && !Number.isNaN(doc.version) ? doc.version : 1
+
+      const payload: Record<string, unknown> = {
         documentId,
-        operations: unsyncedOps.map((op) => ({
+        version: safeVersion,
+      }
+
+      if (doc.isDirty) {
+        payload.content = doc.content
+        payload.title = doc.title
+      }
+
+      if (unsyncedOps.length > 0) {
+        payload.operations = unsyncedOps.map((op) => ({
           documentId: op.documentId,
           type: op.type,
           data: op.data,
-          version: op.version,
-          lamport: op.lamport,
+          version: typeof op.version === "number" && !Number.isNaN(op.version) ? op.version : safeVersion,
+          lamport: typeof op.lamport === "number" && !Number.isNaN(op.lamport) ? op.lamport : safeVersion,
           clientId: op.clientId,
-        })),
-        baseVersion: unsyncedOps[0].version,
-        lamport: Math.max(...unsyncedOps.map((o) => o.lamport)),
+        }))
       }
 
       const stringified = JSON.stringify(payload)
@@ -289,14 +355,59 @@ class SyncEngine {
 
       if (!response.ok) return false
 
+      const result = await response.json()
+
+      if (result.document) {
+        await saveLocalDocument({
+          ...doc,
+          content: result.document.content,
+          title: result.document.title,
+          version: result.document.version,
+          isDirty: false,
+          syncedAt: Date.now(),
+        })
+      } else {
+        await markDocumentSynced(documentId)
+      }
+
       for (const op of unsyncedOps) {
         await markOperationSynced(op.id)
       }
 
-      await markDocumentSynced(documentId)
       return true
     } catch {
       return false
+    }
+  }
+
+  async fetchDocuments(): Promise<void> {
+    try {
+      const res = await fetch("/api/documents")
+      if (!res.ok) return
+      const docs: Array<{ id: string; title: string; content: string; version: number; ownerId: string; updatedAt: string }> = await res.json()
+      const serverIds = new Set(docs.map((d) => d.id))
+      const localDocs = await localDb.documents.toArray()
+      for (const local of localDocs) {
+        if (!serverIds.has(local.id)) {
+          await localDb.documents.delete(local.id)
+        }
+      }
+      for (const doc of docs) {
+        const existing = await getLocalDocument(doc.id)
+        if (!existing || existing.version < doc.version) {
+          await saveLocalDocument({
+            id: doc.id,
+            title: doc.title,
+            content: doc.content,
+            version: doc.version,
+            ownerId: doc.ownerId,
+            updatedAt: new Date(doc.updatedAt).getTime(),
+            syncedAt: Date.now(),
+            isDirty: false,
+          })
+        }
+      }
+    } catch {
     }
   }
 
@@ -312,28 +423,55 @@ class SyncEngine {
         return
       }
 
-      const doc = await getLocalDocument(item.documentId)
-      if (!doc) {
-        this.notify("idle")
-        return
-      }
-
-      const success = await this.pushChanges(item.documentId)
-      if (success) {
-        await this.pullChanges(item.documentId)
-        this.notify("idle")
-      } else {
-        if (item.retries < (item.maxRetries ?? 5)) {
-          await localDb.syncQueue.add({
-            ...item,
-            retries: item.retries + 1,
-            createdAt: Date.now(),
+      if (item.action === "CREATE_DOCUMENT") {
+        const doc = item.payload as LocalDocument
+        try {
+          const res = await fetch("/api/documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: doc.id, title: doc.title, content: doc.content }),
           })
-          this.notify("error")
-        } else {
-          this.notify("error")
+          if (res.ok) {
+            const serverDoc = await res.json()
+            await saveLocalDocument({
+              ...doc,
+              version: serverDoc.version,
+              syncedAt: Date.now(),
+              isDirty: false,
+            })
+          } else {
+            throw new Error("create failed")
+          }
+        } catch {
+          if (item.retries < (item.maxRetries ?? 5)) {
+            await localDb.syncQueue.add({ ...item, retries: item.retries + 1, createdAt: Date.now() })
+            this.notify("error")
+          } else {
+            this.notify("error")
+          }
+          return
+        }
+      } else {
+        const doc = await getLocalDocument(item.documentId)
+        if (!doc) {
+          this.notify("idle")
+          return
+        }
+
+        const success = await this.pushChanges(item.documentId)
+        if (!success) {
+          if (item.retries < (item.maxRetries ?? 5)) {
+            await localDb.syncQueue.add({ ...item, retries: item.retries + 1, createdAt: Date.now() })
+            this.notify("error")
+          } else {
+            this.notify("error")
+          }
+          return
         }
       }
+
+      await this.pullDocument(item.documentId)
+      this.notify("idle")
     } catch {
       this.notify("error")
     }

@@ -15,7 +15,7 @@ function SignInForm() {
   const [error, setError] = useState("")
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get("callbackUrl") || "/"
+  const callbackUrl = searchParams?.get("callbackUrl") || "/"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -87,6 +87,12 @@ function SignInForm() {
       <Button type="submit" className="w-full" disabled={isLoading}>
         {isLoading ? "Signing in..." : "Sign In"}
       </Button>
+
+      <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700 space-y-1">
+        <p className="font-semibold text-sm">Demo Accounts</p>
+        <p><span className="font-mono">demo@houseofedtech.app</span> / <span className="font-mono">demo123</span> <span className="text-blue-500">(Owner)</span></p>
+        <p><span className="font-mono">collab@houseofedtech.app</span> / <span className="font-mono">demo123</span> <span className="text-blue-500">(Editor)</span></p>
+      </div>
     </form>
   )
 }

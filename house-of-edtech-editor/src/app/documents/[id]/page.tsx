@@ -1,11 +1,13 @@
 "use client"
 
+import { use } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { DocumentEditor } from "@/components/document-editor"
 import { Footer } from "@/components/footer"
 
-export default function DocumentPage({ params }: { params: { id: string } }) {
+export default function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const { data: session } = useSession()
   const router = useRouter()
 
@@ -27,7 +29,7 @@ export default function DocumentPage({ params }: { params: { id: string } }) {
 
   return (
     <>
-      <DocumentEditor documentId={params.id} />
+      <DocumentEditor documentId={id} />
       <Footer />
     </>
   )
