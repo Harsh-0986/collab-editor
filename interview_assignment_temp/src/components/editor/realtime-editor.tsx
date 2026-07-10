@@ -100,8 +100,19 @@ export default function RealtimeEditor({
     if (editor && doc?.content) {
       const currentJson = JSON.stringify(editor.getJSON())
       const newJson = JSON.stringify(doc.content)
+      
+      // Only update if content actually changed and user is not actively editing
       if (currentJson !== newJson && doc.content.type === "doc") {
+        // Save current cursor position
+        const { from, to } = editor.state.selection
+        
+        // Update content
         editor.commands.setContent(doc.content)
+        
+        // Restore cursor position
+        setTimeout(() => {
+          editor.commands.setTextSelection({ from, to })
+        }, 50)
       }
     }
   }, [doc?.id, doc?.content, editor])
