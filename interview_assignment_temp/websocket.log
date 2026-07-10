@@ -292,3 +292,15 @@ User joined document: {
 }
 Client disconnected: aw3W18JvZV1uiqJCAABj
 Client disconnected: -O6LZ8FRyU_SZ_b2AABh
+Client connected: n7V1Id6o5TMx7o0dAABm
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client connected: VD8bz_7m2zeyZizPAABo
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
