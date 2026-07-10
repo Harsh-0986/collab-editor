@@ -21,6 +21,7 @@ export function useRealtimeCollaboration(documentId: string, userId: string, use
   const [isConnected, setIsConnected] = useState(false)
   const socketRef = useRef<Socket | null>(null)
   const lastPositionRef = useRef<CursorPosition | null>(null)
+  const lastCursorPositionRef = useRef<number>(0)
   const reconnectAttempts = useRef(0)
   const maxReconnectAttempts = 5
 
@@ -131,13 +132,18 @@ export function useRealtimeCollaboration(documentId: string, userId: string, use
 
   const sendCursorPosition = (position: CursorPosition) => {
     if (socketRef.current && isConnected && position !== lastPositionRef.current) {
-      socketRef.current.emit("cursor-position", {
-        documentId,
-        userId,
-        userName,
-        position,
-      })
-      lastPositionRef.current = position
+      // Throttle cursor updates to prevent flooding
+      const now = Date.now()
+      if (!lastCursorPositionRef.current || now - lastCursorPositionRef.current > 300) {
+        socketRef.current.emit("cursor-position", {
+          documentId,
+          userId,
+          userName,
+          position,
+        })
+        lastPositionRef.current = position
+        lastCursorPositionRef.current = now
+      }
     }
   }
 

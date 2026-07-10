@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRealtimeCollaboration } from "@/hooks/use-realtime-collaboration"
 import { User, Users } from "lucide-react"
 
@@ -11,64 +11,115 @@ interface RealtimeCursorsProps {
   editorContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
+interface CursorData {
+  userId: string
+  name: string
+  position: { x: number; y: number }
+  color: string
+}
+
 export default function RealtimeCursors({ documentId, userId, userName, editorContainerRef }: RealtimeCursorsProps) {
-  const { cursors, isConnected, sendCursorPosition } = useRealtimeCollaboration(
+  const { cursors: remoteCursors, isConnected, sendCursorPosition } = useRealtimeCollaboration(
     documentId, 
     userId, 
     userName
   )
 
+  const [allCursors, setAllCursors] = useState<CursorData[]>([])
+  const [ownCursorPosition, setOwnCursorPosition] = useState<{ x: number; y: number } | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
   const lastUpdateTimeRef = useRef(0)
+  const lastSelectionRef = useRef<string>("")
 
   useEffect(() => {
     const container = editorContainerRef.current
     if (!container) return
 
-    const handleSelectionChange = () => {
+    const updateCursorPosition = () => {
       const selection = window.getSelection()
       if (!selection || selection.rangeCount === 0) return
 
       const range = selection.getRangeAt(0)
+      const selectionString = range.toString()
+      
+      // Only update if selection changed (to prevent cursor jumping during typing)
+      if (selectionString === lastSelectionRef.current) return
+      lastSelectionRef.current = selectionString
+
       const rect = range.getBoundingClientRect()
       const containerRect = container.getBoundingClientRect()
       
       // Calculate position relative to editor container
       const position = {
-        x: rect.left - containerRect.left + rect.width / 2,
-        y: rect.top - containerRect.top + rect.height / 2,
+        x: rect.left - containerRect.left + (rect.width / 2),
+        y: rect.top - containerRect.top + (rect.height / 2),
       }
       
-      // Debounce cursor position updates
-      const now = Date.now()
-      if (!lastUpdateTimeRef.current || now - lastUpdateTimeRef.current > 150) {
-        sendCursorPosition(position)
-        lastUpdateTimeRef.current = now
+      setOwnCursorPosition(position)
+      
+      // Only send to other users if not actively editing
+      if (!isEditing) {
+        const now = Date.now()
+        if (!lastUpdateTimeRef.current || now - lastUpdateTimeRef.current > 200) {
+          sendCursorPosition(position)
+          lastUpdateTimeRef.current = now
+        }
       }
+    }
+
+    const handleSelectionChange = () => {
+      updateCursorPosition()
     }
 
     // Listen for selection changes
     document.addEventListener("selectionchange", handleSelectionChange)
     
-    // Listen for keyboard events (text cursor movement)
-    const handleKeyPress = () => {
-      setTimeout(handleSelectionChange, 0) // Next tick to allow DOM update
+    // Listen for keyboard events
+    const handleKeyDown = (e: KeyboardEvent) => {
+      setIsEditing(true)
+      setTimeout(() => {
+        updateCursorPosition()
+        // Stop editing after a short delay
+        setTimeout(() => setIsEditing(false), 100)
+      }, 0)
     }
 
-    document.addEventListener("keydown", handleKeyPress)
+    document.addEventListener("keydown", handleKeyDown)
     
     // Listen for mouse clicks (which change text cursor position)
     const handleClick = () => {
-      setTimeout(handleSelectionChange, 0) // Next tick to allow DOM update
+      setIsEditing(false)
+      setTimeout(updateCursorPosition, 0)
     }
 
     document.addEventListener("click", handleClick)
 
+    // Initial position
+    updateCursorPosition()
+
     return () => {
       document.removeEventListener("selectionchange", handleSelectionChange)
-      document.removeEventListener("keydown", handleKeyPress)
+      document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("click", handleClick)
     }
-  }, [sendCursorPosition, editorContainerRef])
+  }, [sendCursorPosition, editorContainerRef, isEditing])
+
+  // Combine own cursor with remote cursors
+  useEffect(() => {
+    const combinedCursors = [...remoteCursors]
+    
+    if (ownCursorPosition) {
+      // Add own cursor at the beginning
+      combinedCursors.unshift({
+        userId,
+        name: userName,
+        position: ownCursorPosition,
+        color: "#3B82F6", // Blue for own cursor
+      })
+    }
+    
+    setAllCursors(combinedCursors)
+  }, [remoteCursors, ownCursorPosition, userId, userName])
 
   return (
     <div className="absolute inset-0 pointer-events-none">
@@ -82,14 +133,14 @@ export default function RealtimeCursors({ documentId, userId, userName, editorCo
           }`} />
           <span>{isConnected ? 'Live' : 'Connecting...'}</span>
           <Users className="w-3 h-3" />
-          <span className="font-medium">{Object.keys(cursors).length}</span>
+          <span className="font-medium">{allCursors.length}</span>
         </div>
       </div>
 
-      {/* User cursors */}
-      {Object.entries(cursors).map(([cursorUserId, cursor]) => (
+      {/* All cursors (including own) */}
+      {allCursors.map((cursor) => (
         <div
-          key={cursorUserId}
+          key={cursor.userId}
           className="absolute flex items-center gap-1 pointer-events-none transition-all duration-150 ease-out"
           style={{
             left: cursor.position.x,
@@ -97,24 +148,31 @@ export default function RealtimeCursors({ documentId, userId, userName, editorCo
             transform: "translate(-50%, -100%)",
           }}
         >
-          {/* Text cursor line */}
+          {/* Text cursor - taller and more realistic */}
           <div
-            className="w-0.5 h-6 animate-pulse"
-            style={{ backgroundColor: cursor.color }}
+            className={`w-0.5 h-8 animate-pulse ${
+              cursor.userId === userId ? 'bg-blue-500' : ''
+            }`}
+            style={{ 
+              backgroundColor: cursor.color,
+              boxShadow: `0 0 0 1px ${cursor.color}40`
+            }}
           />
           
-          {/* User name label */}
-          <div
-            className="px-2 py-1 text-xs font-medium rounded shadow-lg text-white border border-white/20 backdrop-blur-sm"
-            style={{ 
-              backgroundColor: `${cursor.color}ee`,
-            }}
-          >
-            <div className="flex items-center gap-1">
-              <User className="w-2 h-2" />
-              {cursor.name}
+          {/* User name label - show for other users only */}
+          {cursor.userId !== userId && (
+            <div
+              className="px-2 py-1 text-xs font-medium rounded shadow-lg text-white border border-white/20 backdrop-blur-sm whitespace-nowrap"
+              style={{ 
+                backgroundColor: `${cursor.color}ee`,
+              }}
+            >
+              <div className="flex items-center gap-1">
+                <User className="w-2 h-2" />
+                {cursor.name}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       ))}
     </div>
