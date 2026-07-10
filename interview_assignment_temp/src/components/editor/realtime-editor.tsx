@@ -32,7 +32,7 @@ export default function RealtimeEditor({
   const lastContentRef = useRef("")
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
   
-  const { cursors: remoteCursors, isConnected, sendCursorPosition } = useRealtimeCollaboration(
+  const { cursors: remoteCursors, isConnected, sendCursorPosition, sendOperation } = useRealtimeCollaboration(
     doc?.id || "",
     userId || "",
     userName
