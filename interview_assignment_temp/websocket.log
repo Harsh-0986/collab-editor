@@ -262,3 +262,33 @@ User joined document: {
   userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
   userName: 'harsh'
 }
+Client disconnected: lUK5mU2ve3EbIrKOAABS
+Client disconnected: 0c2hmd6LhUgWE0WnAABZ
+Client connected: xcmjBWPIX_9R7LMFAABc
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client connected: y_aSt2f3H6YViMkfAABe
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client disconnected: oLHziSFkxmm7629LAABY
+Client disconnected: uNcwJoy8GkHnuFPAAABV
+Client connected: -O6LZ8FRyU_SZ_b2AABh
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client connected: aw3W18JvZV1uiqJCAABj
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client disconnected: aw3W18JvZV1uiqJCAABj
+Client disconnected: -O6LZ8FRyU_SZ_b2AABh

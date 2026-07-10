@@ -19,6 +19,20 @@ interface EditorProps {
   userName?: string
 }
 
+// Custom extension for remote cursors
+const RemoteCursorExtension = {
+  addProseMirrorPlugins() {
+    return [
+      () => ({
+        appendTransaction: (transactions, oldState, newState) => {
+          // This would handle cursor positioning within the editor content
+          return null
+        }
+      })
+    ]
+  }
+}
+
 export default function RealtimeEditor({ 
   document: doc, 
   onContentChange, 
@@ -48,6 +62,7 @@ export default function RealtimeEditor({
       Placeholder.configure({
         placeholder: "Start writing...",
       }),
+      RemoteCursorExtension,
     ],
     content: doc?.content || {
       type: "doc",
@@ -57,7 +72,7 @@ export default function RealtimeEditor({
     immediatelyRender: true,
     editorProps: {
       attributes: {
-        class: "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[500px] px-8 py-6",
+        class: "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[500px] px-8 py-6 relative",
       },
     },
     onUpdate: ({ editor: ed }) => {
@@ -144,40 +159,26 @@ export default function RealtimeEditor({
           </div>
         )}
         
-        {/* Embedded cursors within the editor */}
+        {/* Remote cursors as actual text cursors */}
         {doc && userId && isConnected && (
           <div className="absolute inset-0 pointer-events-none">
             {Object.values(remoteCursors).map((cursor) => (
               <div
                 key={cursor.userId}
-                className="absolute flex items-center gap-1 pointer-events-none transition-all duration-150 ease-out"
+                className="absolute pointer-events-none"
                 style={{
                   left: cursor.position.x,
                   top: cursor.position.y,
-                  transform: "translate(-50%, -100%)",
+                  transform: "translate(-50%, -50%)",
                 }}
               >
-                {/* Text cursor - embedded within editor */}
-                <div
-                  className="w-0.5 h-6 animate-pulse"
-                  style={{ 
-                    backgroundColor: cursor.color,
-                    boxShadow: `0 0 0 1px ${cursor.color}40`
+                {/* Real text cursor style */}
+                <div 
+                  className="w-px h-5 bg-black animate-pulse"
+                  style={{
+                    boxShadow: `0 0 0 1px ${cursor.color}40`,
                   }}
                 />
-                
-                {/* User name label */}
-                <div
-                  className="px-2 py-1 text-xs font-medium rounded shadow-lg text-white border border-white/20 backdrop-blur-sm whitespace-nowrap"
-                  style={{ 
-                    backgroundColor: `${cursor.color}ee`,
-                  }}
-                >
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cursor.color }} />
-                    {cursor.name}
-                  </div>
-                </div>
               </div>
             ))}
           </div>
