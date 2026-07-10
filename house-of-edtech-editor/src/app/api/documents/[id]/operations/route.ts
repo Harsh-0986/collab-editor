@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { db } from "@/lib/db"
+import { prisma } from "@/lib/db"
 import { z } from "zod"
 
 const createOperationSchema = z.object({
@@ -12,17 +12,18 @@ const createOperationSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const document = await db.document.findFirst({
+    const document = await prisma.document.findFirst({
       where: {
-        id: params.id,
+        id,
         members: {
           some: {
             userId: session.user.id,
@@ -39,19 +40,15 @@ export async function POST(
     const body = await request.json()
     const { type, payload, lamport } = createOperationSchema.parse(body)
 
-    const operation = await db.documentOperation.create({
+    const operation = await prisma.operation.create({
       data: {
-        documentId: params.id,
-        userId: session.user.id,
-        type,
-        payload,
-        lamport,
-        synced: false
+        documentId: id,
+        createdBy: session.user.id,
+        type: type as any,
+        data: payload,
+        version: lamport,
       }
     })
-
-    // Broadcast to other clients via WebSocket
-    // This would be handled by a WebSocket server in production
 
     return NextResponse.json(operation)
   } catch (error) {
@@ -65,17 +62,18 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const document = await db.document.findFirst({
+    const document = await prisma.document.findFirst({
       where: {
-        id: params.id,
+        id,
         members: {
           some: { userId: session.user.id }
         }
@@ -86,9 +84,9 @@ export async function GET(
       return NextResponse.json({ error: "Document not found" }, { status: 404 })
     }
 
-    const operations = await db.documentOperation.findMany({
-      where: { documentId: params.id },
-      orderBy: { timestamp: "desc" },
+    const operations = await prisma.operation.findMany({
+      where: { documentId: id },
+      orderBy: { createdAt: "desc" },
       take: 50,
       include: {
         user: {

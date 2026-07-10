@@ -43,8 +43,8 @@ export function useWebSocket({
   const [documentVersion, setDocumentVersion] = useState(0)
 
   useEffect(() => {
-    // Connect to WebSocket server
-    socketRef.current = io("http://localhost:3001", {
+    // Connect to WebSocket server through Next.js API route
+    socketRef.current = io("http://localhost:3000/api/socket", {
       transports: ["websocket"],
     })
 

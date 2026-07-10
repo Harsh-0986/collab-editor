@@ -3,8 +3,6 @@
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
-import Collaboration from "@tiptap/extension-collaboration"
-import CollaborationCursor from "@tiptap/extension-collaboration-cursor"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -52,12 +50,6 @@ export function DocumentEditor({
       Placeholder.configure({
         placeholder: "Start writing your document...",
       }),
-      Collaboration.configure({
-        document: documentId,
-      }),
-      CollaborationCursor.configure({
-        provider: null, // Will be set up with WebSocket
-      }),
     ],
     content: "",
     autofocus: "end",
@@ -86,11 +78,10 @@ export function DocumentEditor({
   useEffect(() => {
     if (!editor) return
 
-    // Auto-save on content change
-    const editorListener = editor.on("update", handleAutoSave)
+    editor.on("update", handleAutoSave)
     
     return () => {
-      editorListener()
+      editor.off("update", handleAutoSave)
     }
   }, [editor])
 

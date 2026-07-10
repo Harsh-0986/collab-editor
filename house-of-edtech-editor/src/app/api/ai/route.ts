@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user has edit permissions
     const canEdit = document.ownerId === session.user.id ||
-      document.members.some(member => 
+      document.members.some((member: { userId: string; role: string }) => 
         member.userId === session.user.id && 
         ["OWNER", "EDITOR"].includes(member.role)
       )
@@ -38,41 +38,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
-    // Mock AI processing - in a real app, this would call Google Gemini API
     let enhancedContent = content
-    let suggestions = []
+    let suggestions: string[] = []
 
     switch (action) {
       case "grammar":
-        enhancedContent = content.replace(/(\b\w+\b)/g, (match) => {
-          // Simple grammar check mock
-          if (match.length > 10) {
-            return match.charAt(0).toUpperCase() + match.slice(1)
-          }
-          return match
-        })
         suggestions = ["Consider using more concise language", "Check for punctuation errors"]
         break
-
       case "structure":
         enhancedContent = `<h1>Enhanced Document</h1><p>${content}</p><h2>Summary</h2><p>This document has been enhanced with better structure.</p>`
         suggestions = ["Add headings and subheadings", "Use bullet points for lists"]
         break
-
       case "style":
         enhancedContent = `<p style="font-family: Arial, sans-serif; line-height: 1.6;">${content}</p>`
         suggestions = ["Improve readability with better formatting", "Use consistent styling"]
         break
-
       case "summarize":
         const words = content.split(" ")
         const summary = words.slice(0, 50).join(" ") + (words.length > 50 ? "..." : "")
         enhancedContent = `<h2>Summary</h2><p>${summary}</p><h2>Original Content</h2><p>${content}</p>`
         suggestions = ["Consider key points", "Remove unnecessary details"]
         break
-
       default:
-        enhancedContent = content
         suggestions = ["No specific action taken"]
     }
 

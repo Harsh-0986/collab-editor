@@ -5,9 +5,10 @@ import { prisma } from "@/lib/db"
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await getServerSession(authOptions)
     
     if (!session) {
@@ -15,7 +16,7 @@ export async function GET(
     }
 
     const document = await prisma.document.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         owner: {
           select: {
@@ -48,7 +49,7 @@ export async function GET(
 
     // Check if user has access to document
     const hasAccess = document.ownerId === session.user.id ||
-      document.members.some(member => member.userId === session.user.id)
+      document.members.some((member: { userId: string }) => member.userId === session.user.id)
 
     if (!hasAccess) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
@@ -66,9 +67,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await getServerSession(authOptions)
     
     if (!session) {
@@ -79,7 +81,7 @@ export async function PUT(
 
     // Get document to check permissions
     const document = await prisma.document.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         members: {
           where: { userId: session.user.id },
@@ -93,7 +95,7 @@ export async function PUT(
 
     // Check if user has edit permissions
     const canEdit = document.ownerId === session.user.id ||
-      document.members.some(member => 
+      document.members.some((member: { userId: string; role: string }) => 
         member.userId === session.user.id && 
         ["OWNER", "EDITOR"].includes(member.role)
       )
@@ -104,7 +106,7 @@ export async function PUT(
 
     // Update document
     const updatedDocument = await prisma.document.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         title,
         content,
@@ -135,7 +137,7 @@ export async function PUT(
     // Create snapshot
     await prisma.documentSnapshot.create({
       data: {
-        documentId: params.id,
+        documentId: id,
         version: updatedDocument.version,
         content,
         createdBy: session.user.id,
@@ -154,9 +156,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await getServerSession(authOptions)
     
     if (!session) {
@@ -165,7 +168,7 @@ export async function DELETE(
 
     // Get document to check ownership
     const document = await prisma.document.findUnique({
-      where: { id: params.id },
+      where: { id },
     })
 
     if (!document) {
@@ -178,7 +181,7 @@ export async function DELETE(
     }
 
     await prisma.document.delete({
-      where: { id: params.id },
+      where: { id },
     })
 
     return NextResponse.json({ message: "Document deleted" })

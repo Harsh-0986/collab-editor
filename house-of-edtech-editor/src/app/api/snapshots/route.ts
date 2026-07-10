@@ -3,32 +3,26 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const document = await prisma.document.findUnique({
-      where: { id: params.id },
-    })
+    const documentId = request.nextUrl.searchParams.get("documentId")
+    if (!documentId) {
+      return NextResponse.json({ error: "documentId query param required" }, { status: 400 })
+    }
 
+    const document = await prisma.document.findUnique({ where: { id: documentId } })
     if (!document) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 })
     }
 
-    // Check if user has access to document
     const hasAccess = document.ownerId === session.user.id ||
       (await prisma.documentMember.findFirst({
-        where: {
-          documentId: params.id,
-          userId: session.user.id,
-        },
+        where: { documentId, userId: session.user.id },
       }))
 
     if (!hasAccess) {
@@ -36,92 +30,63 @@ export async function GET(
     }
 
     const snapshots = await prisma.documentSnapshot.findMany({
-      where: { documentId: params.id },
+      where: { documentId },
       orderBy: { version: "desc" },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        user: { select: { id: true, name: true, email: true } },
       },
     })
 
     return NextResponse.json(snapshots)
   } catch (error) {
     console.error("Error fetching snapshots:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { content, version } = await request.json()
+    const { documentId, content, version } = await request.json()
+    if (!documentId) {
+      return NextResponse.json({ error: "documentId required" }, { status: 400 })
+    }
 
-    // Get document to check permissions
     const document = await prisma.document.findUnique({
-      where: { id: params.id },
-      include: {
-        members: {
-          where: { userId: session.user.id },
-        },
-      },
+      where: { id: documentId },
+      include: { members: { where: { userId: session.user.id } } },
     })
 
     if (!document) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 })
     }
 
-    // Check if user has edit permissions
     const canEdit = document.ownerId === session.user.id ||
-      document.members.some(member => 
-        member.userId === session.user.id && 
-        ["OWNER", "EDITOR"].includes(member.role)
-      )
+      document.members.some((m: { userId: string; role: string }) => m.userId === session.user.id && ["OWNER", "EDITOR"].includes(m.role))
 
     if (!canEdit) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
-    // Create snapshot
     const snapshot = await prisma.documentSnapshot.create({
       data: {
-        documentId: params.id,
+        documentId,
         version: version || document.version + 1,
         content,
         createdBy: session.user.id,
       },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        user: { select: { id: true, name: true, email: true } },
       },
     })
 
     return NextResponse.json(snapshot, { status: 201 })
   } catch (error) {
     console.error("Error creating snapshot:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

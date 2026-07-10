@@ -50,9 +50,11 @@ model User {
 
   accounts     Account[]
   sessions     Session[]
+  documents   Document[]   @relation("DocumentOwner")
   documentMembers DocumentMember[]
   documentSnapshots DocumentSnapshot[]
   operations   Operation[]
+  comments     Comment[]
 }
 
 model VerificationToken {
@@ -73,7 +75,7 @@ model Document {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User         @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members     DocumentMember[]
   snapshots   DocumentSnapshot[]
   operations  Operation[]
@@ -153,4 +155,5 @@ enum OperationType {
   UPDATE
   DELETE
   MOVE
+  AI_ENHANCEMENT
 }

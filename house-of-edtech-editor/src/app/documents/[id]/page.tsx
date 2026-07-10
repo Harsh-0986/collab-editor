@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { DocumentEditor } from "@/components/document-editor"
@@ -38,6 +38,18 @@ export default function DocumentPage({ params }: DocumentPageProps) {
     userId,
     userName
   })
+
+  // Initialize WebSocket connection on mount
+  useEffect(() => {
+    // Initialize the WebSocket connection for this document
+    fetch("/api/socket", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ documentId }),
+    }).catch(console.error)
+  }, [documentId])
 
   if (!session) {
     return (

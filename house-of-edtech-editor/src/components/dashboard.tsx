@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { FileText, Plus, Users, Calendar, Edit } from "lucide-react"
-import { format } from "date-fns"
 
 interface Document {
   id: string

@@ -14,7 +14,7 @@ import {
   History, 
   Clock, 
   User, 
-  Restore,
+  RotateCcw,
   Trash2,
   Download
 } from "lucide-react"
@@ -172,7 +172,7 @@ export function HistoryDialog({
                         handleRestore(item.id)
                       }}
                     >
-                      <Restore className="h-4 w-4 mr-1" />
+                      <RotateCcw className="h-4 w-4 mr-1" />
                       Restore
                     </Button>
                     

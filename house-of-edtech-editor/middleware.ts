@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getToken } from "next-auth/jwt"
 
 export async function middleware(request: NextRequest) {
@@ -11,11 +11,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // Redirect unauthenticated users to sign-in page
-  if (!token && pathname !== "/signin") {
+  if (!token && pathname !== "/signin" && !pathname.startsWith("/api/")) {
     return NextResponse.redirect(new URL("/signin", request.url))
   }
 
-  // Redirect authenticated users from sign-in to dashboard
   if (token && pathname === "/signin") {
     return NextResponse.redirect(new URL("/", request.url))
   }
