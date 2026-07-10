@@ -24,24 +24,49 @@ export default function RealtimeCursors({ documentId, userId, userName, editorCo
     const container = editorContainerRef.current
     if (!container) return
 
-    const handleMouseMove = (event: MouseEvent) => {
-      const rect = container.getBoundingClientRect()
+    const handleSelectionChange = () => {
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0) return
+
+      const range = selection.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+      const containerRect = container.getBoundingClientRect()
+      
+      // Calculate position relative to editor container
       const position = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
+        x: rect.left - containerRect.left + rect.width / 2,
+        y: rect.top - containerRect.top + rect.height / 2,
       }
       
       // Debounce cursor position updates
       const now = Date.now()
-      if (!lastUpdateTimeRef.current || now - lastUpdateTimeRef.current > 100) {
+      if (!lastUpdateTimeRef.current || now - lastUpdateTimeRef.current > 150) {
         sendCursorPosition(position)
         lastUpdateTimeRef.current = now
       }
     }
 
-    container.addEventListener("mousemove", handleMouseMove)
+    // Listen for selection changes
+    document.addEventListener("selectionchange", handleSelectionChange)
+    
+    // Listen for keyboard events (text cursor movement)
+    const handleKeyPress = () => {
+      setTimeout(handleSelectionChange, 0) // Next tick to allow DOM update
+    }
+
+    document.addEventListener("keydown", handleKeyPress)
+    
+    // Listen for mouse clicks (which change text cursor position)
+    const handleClick = () => {
+      setTimeout(handleSelectionChange, 0) // Next tick to allow DOM update
+    }
+
+    document.addEventListener("click", handleClick)
+
     return () => {
-      container.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("selectionchange", handleSelectionChange)
+      document.removeEventListener("keydown", handleKeyPress)
+      document.removeEventListener("click", handleClick)
     }
   }, [sendCursorPosition, editorContainerRef])
 
@@ -72,9 +97,9 @@ export default function RealtimeCursors({ documentId, userId, userName, editorCo
             transform: "translate(-50%, -100%)",
           }}
         >
-          {/* Cursor line */}
+          {/* Text cursor line */}
           <div
-            className="w-0.5 h-5 animate-pulse"
+            className="w-0.5 h-6 animate-pulse"
             style={{ backgroundColor: cursor.color }}
           />
           
