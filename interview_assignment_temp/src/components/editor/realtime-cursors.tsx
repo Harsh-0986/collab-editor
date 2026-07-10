@@ -106,7 +106,8 @@ export default function RealtimeCursors({ documentId, userId, userName, editorCo
 
   // Combine own cursor with remote cursors
   useEffect(() => {
-    const combinedCursors = [...remoteCursors]
+    const remoteCursorsArray = Object.values(remoteCursors).filter(cursor => cursor.userId !== userId)
+    const combinedCursors = [...remoteCursorsArray]
     
     if (ownCursorPosition) {
       // Add own cursor at the beginning

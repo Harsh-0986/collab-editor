@@ -6,7 +6,6 @@ import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import Placeholder from "@tiptap/extension-placeholder"
 import { EditorToolbar } from "./editor-toolbar"
-import RealtimeCursors from "./realtime-cursors"
 import { useRealtimeCollaboration } from "@/hooks/use-realtime-collaboration"
 import type { StoredDocument } from "@/types"
 
@@ -33,7 +32,7 @@ export default function RealtimeEditor({
   const lastContentRef = useRef("")
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
   
-  const { sendOperation } = useRealtimeCollaboration(
+  const { cursors: remoteCursors, isConnected, sendCursorPosition } = useRealtimeCollaboration(
     doc?.id || "",
     userId || "",
     userName
@@ -129,13 +128,59 @@ export default function RealtimeEditor({
       {!readOnly && <EditorToolbar editor={editor} />}
       <div className="flex-1 overflow-y-auto relative" ref={editorContainerRef}>
         <EditorContent editor={editor} />
-        {doc && userId && (
-          <RealtimeCursors
-            documentId={doc.id}
-            userId={userId}
-            userName={userName}
-            editorContainerRef={editorContainerRef}
-          />
+        
+        {/* Connection status indicator */}
+        {doc && userId && isConnected && (
+          <div className="absolute top-2 right-2 flex items-center gap-2 z-50">
+            <div className={`flex items-center gap-1 text-xs ${
+              isConnected ? 'text-green-600' : 'text-yellow-600'
+            }`}>
+              <div className={`w-2 h-2 rounded-full ${
+                isConnected ? 'bg-green-500' : 'bg-yellow-500'
+              }`} />
+              <span>{isConnected ? 'Live' : 'Connecting...'}</span>
+              <span className="font-medium">{Object.keys(remoteCursors).length}</span>
+            </div>
+          </div>
+        )}
+        
+        {/* Embedded cursors within the editor */}
+        {doc && userId && isConnected && (
+          <div className="absolute inset-0 pointer-events-none">
+            {Object.values(remoteCursors).map((cursor) => (
+              <div
+                key={cursor.userId}
+                className="absolute flex items-center gap-1 pointer-events-none transition-all duration-150 ease-out"
+                style={{
+                  left: cursor.position.x,
+                  top: cursor.position.y,
+                  transform: "translate(-50%, -100%)",
+                }}
+              >
+                {/* Text cursor - embedded within editor */}
+                <div
+                  className="w-0.5 h-6 animate-pulse"
+                  style={{ 
+                    backgroundColor: cursor.color,
+                    boxShadow: `0 0 0 1px ${cursor.color}40`
+                  }}
+                />
+                
+                {/* User name label */}
+                <div
+                  className="px-2 py-1 text-xs font-medium rounded shadow-lg text-white border border-white/20 backdrop-blur-sm whitespace-nowrap"
+                  style={{ 
+                    backgroundColor: `${cursor.color}ee`,
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cursor.color }} />
+                    {cursor.name}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
