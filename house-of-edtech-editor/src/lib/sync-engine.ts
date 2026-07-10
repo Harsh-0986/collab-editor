@@ -51,8 +51,6 @@ class SyncEngine {
     }
   }
 
-  private activeDocumentIds: Set<string> = new Set()
-
   start(): void {
     if (this.isRunning || !this.isOnline) return
     this.isRunning = true
@@ -60,7 +58,6 @@ class SyncEngine {
     this.fetchDocuments()
     this.syncInterval = setInterval(() => {
       this.fetchDocuments()
-      this.pullActiveDocuments()
       this.processQueue()
     }, 5000)
     this.processQueue()
@@ -71,21 +68,6 @@ class SyncEngine {
     if (this.syncInterval) {
       clearInterval(this.syncInterval)
       this.syncInterval = null
-    }
-  }
-
-  trackDocument(documentId: string): void {
-    this.activeDocumentIds.add(documentId)
-  }
-
-  untrackDocument(documentId: string): void {
-    this.activeDocumentIds.delete(documentId)
-  }
-
-  private async pullActiveDocuments(): Promise<void> {
-    const ids = Array.from(this.activeDocumentIds)
-    for (const id of ids) {
-      await this.pullDocument(id)
     }
   }
 
@@ -320,6 +302,7 @@ class SyncEngine {
       const unsyncedOps = await getUnsyncedOperations(documentId)
 
       const safeVersion = typeof doc.version === "number" && !Number.isNaN(doc.version) ? doc.version : 1
+      const sentVersion = safeVersion
 
       const payload: Record<string, unknown> = {
         documentId,
@@ -354,6 +337,11 @@ class SyncEngine {
       })
 
       if (!response.ok) return false
+
+      const current = await getLocalDocument(documentId)
+      if (!current || current.version !== sentVersion) {
+        return false
+      }
 
       const result = await response.json()
 
