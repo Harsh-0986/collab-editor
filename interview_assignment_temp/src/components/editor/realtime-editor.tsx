@@ -96,13 +96,16 @@ export default function RealtimeEditor({
     },
   })
 
+  const [isUserEditing, setIsUserEditing] = useState(false)
+  const lastRemoteUpdateRef = useRef(0)
+
   useEffect(() => {
     if (editor && doc?.content) {
       const currentJson = JSON.stringify(editor.getJSON())
       const newJson = JSON.stringify(doc.content)
       
       // Only update if content actually changed and user is not actively editing
-      if (currentJson !== newJson && doc.content.type === "doc") {
+      if (currentJson !== newJson && doc.content.type === "doc" && !isUserEditing) {
         // Save current cursor position
         const { from, to } = editor.state.selection
         
@@ -115,7 +118,21 @@ export default function RealtimeEditor({
         }, 50)
       }
     }
-  }, [doc?.id, doc?.content, editor])
+  }, [doc?.id, doc?.content, editor, isUserEditing])
+
+  // Track if user is actively editing
+  useEffect(() => {
+    const handleUserActivity = () => {
+      setIsUserEditing(true)
+      setTimeout(() => setIsUserEditing(false), 1000)
+    }
+
+    if (editor) {
+      editor.on('transaction', () => {
+        handleUserActivity()
+      })
+    }
+  }, [editor])
 
   useEffect(() => {
     lamportRef.current = currentLamport
@@ -125,10 +142,16 @@ export default function RealtimeEditor({
     return () => editor?.destroy()
   }, [editor])
 
-  // Listen for real-time document updates
+  // Listen for real-time document updates with throttling
   useEffect(() => {
     const handleDocumentUpdate = (event: CustomEvent) => {
       const { operation, userId: remoteUserId } = event.detail
+      
+      // Throttle remote updates to prevent overwhelming the editor
+      const now = Date.now()
+      if (now - lastRemoteUpdateRef.current < 200) return
+      lastRemoteUpdateRef.current = now
+      
       if (remoteUserId !== userId && operation.payload?.content) {
         // Apply remote operation to editor
         const content = operation.payload.content
