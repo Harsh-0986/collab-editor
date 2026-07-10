@@ -27,114 +27,120 @@ export default function RealtimeCursors({ documentId, userId, userName, editorCo
 
   const [allCursors, setAllCursors] = useState<CursorData[]>([])
   const [ownCursorPosition, setOwnCursorPosition] = useState<{ x: number; y: number } | null>(null)
-  const [isEditing, setIsEditing] = useState(false)
-  const [isMovingCursor, setIsMovingCursor] = useState(false)
-  const lastUpdateTimeRef = useRef(0)
-  const lastSelectionRef = useRef<string>("")
-  const lastCursorPositionRef = useRef<{ x: number; y: number } | null>(null)
+  const lastManualPositionRef = useRef<{ x: number; y: number } | null>(null)
+  const isManualMoveRef = useRef(false)
+  const lastSentPositionRef = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     const container = editorContainerRef.current
     if (!container) return
 
-    const updateCursorPosition = () => {
+    let isMouseDown = false
+    let ignoreSelectionChanges = false
+
+    const getCursorPositionFromSelection = () => {
       const selection = window.getSelection()
-      if (!selection || selection.rangeCount === 0) return
+      if (!selection || selection.rangeCount === 0) return null
 
       const range = selection.getRangeAt(0)
-      const selectionString = range.toString()
-      
-      // Only update if selection actually changed
-      if (selectionString === lastSelectionRef.current) return
-      lastSelectionRef.current = selectionString
-
       const rect = range.getBoundingClientRect()
       const containerRect = container.getBoundingClientRect()
       
-      // Calculate position relative to editor container
-      const position = {
+      return {
         x: rect.left - containerRect.left + (rect.width / 2),
         y: rect.top - containerRect.top + (rect.height / 2),
       }
-      
+    }
+
+    const updateCursorPosition = (force = false) => {
+      const position = getCursorPositionFromSelection()
+      if (!position) return
+
       setOwnCursorPosition(position)
       
-      // Only send cursor updates when user is actively moving cursor (not during typing/editing)
-      if (!isEditing && !isMovingCursor) {
+      // Only send manual cursor movements, not automatic ones from text changes
+      if (force || (isManualMoveRef.current && !ignoreSelectionChanges)) {
         const now = Date.now()
-        if (!lastCursorPositionRef.current || 
-            Math.abs(position.x - lastCursorPositionRef.current.x) > 5 || 
-            Math.abs(position.y - lastCursorPositionRef.current.y) > 5 ||
-            now - lastUpdateTimeRef.current > 1000) {
+        if (!lastSentPositionRef.current || 
+            Math.abs(position.x - lastSentPositionRef.current.x) > 15 || 
+            Math.abs(position.y - lastSentPositionRef.current.y) > 15 ||
+            now - (lastSentPositionRef.time || 0) > 1000) {
           
           sendCursorPosition(position)
-          lastCursorPositionRef.current = position
-          lastUpdateTimeRef.current = now
+          lastSentPositionRef.current = position
+          lastSentPositionRef.time = now
         }
       }
-    }
-
-    const handleSelectionChange = () => {
-      // Don't send cursor updates during content changes
-      setTimeout(() => {
-        updateCursorPosition()
-      }, 100)
-    }
-
-    // Listen for selection changes
-    document.addEventListener("selectionchange", handleSelectionChange)
-    
-    // Listen for keyboard events (only for actual cursor movement, not typing)
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
-          e.key === 'Home' || e.key === 'End' || e.ctrlKey || e.metaKey) {
-        setIsMovingCursor(true)
-        setTimeout(() => setIsMovingCursor(false), 200)
-      }
       
-      setIsEditing(true)
-      setTimeout(() => {
-        setIsEditing(false)
-        // After editing stops, update cursor position
-        setTimeout(updateCursorPosition, 50)
-      }, 100)
-    }
-
-    document.addEventListener("keydown", handleKeyDown)
-    
-    // Listen for mouse clicks and movements (cursor positioning)
-    const handleClick = (e: MouseEvent) => {
-      setIsEditing(false)
-      setIsMovingCursor(true)
-      setTimeout(() => {
-        setIsMovingCursor(false)
-        updateCursorPosition()
-      }, 100)
-    }
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (e.target instanceof HTMLElement && e.target.closest('.ProseMirror')) {
-        setIsMovingCursor(true)
+      // Reset manual move flag after a short delay
+      if (isManualMoveRef.current) {
         setTimeout(() => {
-          setIsMovingCursor(false)
-          updateCursorPosition()
+          isManualMoveRef.current = false
+          ignoreSelectionChanges = true
+          setTimeout(() => {
+            ignoreSelectionChanges = false
+          }, 200)
         }, 100)
       }
     }
 
-    document.addEventListener("click", handleClick)
+    const handleMouseDown = () => {
+      isMouseDown = true
+      isManualMoveRef.current = true
+    }
+
+    const handleMouseUp = () => {
+      isMouseDown = false
+      setTimeout(updateCursorPosition, 50)
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (e.target instanceof HTMLElement && e.target.closest('.ProseMirror')) {
+        isManualMoveRef.current = true
+        updateCursorPosition()
+      }
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only for cursor movement keys, not typing
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
+          e.key === 'Home' || e.key === 'End' || e.ctrlKey || e.metaKey) {
+        isManualMoveRef.current = true
+        setTimeout(updateCursorPosition, 100)
+      }
+    }
+
+    // Prevent automatic cursor updates from text changes
+    const handleSelectionChange = () => {
+      if (!ignoreSelectionChanges) {
+        // Don't update position automatically from selection changes
+        setTimeout(() => {
+          const position = getCursorPositionFromSelection()
+          if (position) {
+            setOwnCursorPosition(position)
+          }
+        }, 50)
+      }
+    }
+
+    // Only listen to mouse events for cursor updates
+    container.addEventListener("mousedown", handleMouseDown)
+    container.addEventListener("mouseup", handleMouseUp)
     document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("keydown", handleKeyDown)
+    document.addEventListener("selectionchange", handleSelectionChange)
 
     // Initial position
-    updateCursorPosition()
+    updateCursorPosition(true)
 
     return () => {
-      document.removeEventListener("selectionchange", handleSelectionChange)
-      document.removeEventListener("keydown", handleKeyDown)
-      document.removeEventListener("click", handleClick)
+      container.removeEventListener("mousedown", handleMouseDown)
+      container.removeEventListener("mouseup", handleMouseUp)
       document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("keydown", handleKeyDown)
+      document.removeEventListener("selectionchange", handleSelectionChange)
     }
-  }, [sendCursorPosition, editorContainerRef, isEditing, isMovingCursor])
+  }, [sendCursorPosition, editorContainerRef])
 
   // Combine own cursor with remote cursors
   useEffect(() => {

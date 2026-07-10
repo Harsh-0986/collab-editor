@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef } from "react"
-import { useEditor, EditorContent } from "@tiptap/react"
+import { useEffect, useRef, useState } from "react"
+import { useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import Placeholder from "@tiptap/extension-placeholder"
@@ -19,18 +19,13 @@ interface EditorProps {
   userName?: string
 }
 
-// Custom extension for remote cursors
-const RemoteCursorExtension = {
-  addProseMirrorPlugins() {
-    return [
-      () => ({
-        appendTransaction: (transactions, oldState, newState) => {
-          // This would handle cursor positioning within the editor content
-          return null
-        }
-      })
-    ]
-  }
+interface ContentHighlight {
+  id: string
+  userId: string
+  userName: string
+  content: string
+  position: { top: number; left: number }
+  color: string
 }
 
 export default function RealtimeEditor({ 
@@ -45,8 +40,9 @@ export default function RealtimeEditor({
   const lamportRef = useRef(currentLamport)
   const lastContentRef = useRef("")
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
+  const [contentHighlights, setContentHighlights] = useState<ContentHighlight[]>([])
   
-  const { cursors: remoteCursors, isConnected, sendCursorPosition, sendOperation } = useRealtimeCollaboration(
+  const { isConnected, sendOperation } = useRealtimeCollaboration(
     doc?.id || "",
     userId || "",
     userName
@@ -62,7 +58,6 @@ export default function RealtimeEditor({
       Placeholder.configure({
         placeholder: "Start writing...",
       }),
-      RemoteCursorExtension,
     ],
     content: doc?.content || {
       type: "doc",
@@ -128,6 +123,11 @@ export default function RealtimeEditor({
         const content = operation.payload.content
         if (content && content.type === "doc") {
           editor?.commands.setContent(content)
+          
+          // Add content highlight for remote user
+          setTimeout(() => {
+            addContentHighlight(remoteUserId, operation.payload?.html || "")
+          }, 100)
         }
       }
     }
@@ -137,6 +137,40 @@ export default function RealtimeEditor({
       window.removeEventListener("document-update", handleDocumentUpdate as EventListener)
     }
   }, [editor, userId])
+
+  const addContentHighlight = (userId: string, content: string) => {
+    const colors = [
+      "#FEF3C7", "#DBEAFE", "#D1FAE5", "#EDE9FE", "#FCE7F3",
+      "#FED7AA", "#C7D2FE", "#A7F3D0", "#FBCFE8", "#E0E7FF"
+    ]
+    
+    const color = colors[Math.abs(userId.charCodeAt(0)) % colors.length]
+    
+    // Get editor position
+    const editorElement = editor?.editorElement
+    if (!editorElement) return
+    
+    const rect = editorElement.getBoundingClientRect()
+    
+    const highlight: ContentHighlight = {
+      id: `${userId}-${Date.now()}`,
+      userId,
+      userName: userId === userId ? "You" : "User", // This should be the actual user name
+      content: content.substring(0, 50), // Show first 50 characters
+      position: {
+        top: rect.top + 20,
+        left: rect.left + 20,
+      },
+      color,
+    }
+    
+    setContentHighlights(prev => [...prev.slice(-9), highlight]) // Keep last 10 highlights
+    
+    // Remove highlight after 5 seconds
+    setTimeout(() => {
+      setContentHighlights(prev => prev.filter(h => h.id !== highlight.id))
+    }, 5000)
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -154,35 +188,47 @@ export default function RealtimeEditor({
                 isConnected ? 'bg-green-500' : 'bg-yellow-500'
               }`} />
               <span>{isConnected ? 'Live' : 'Connecting...'}</span>
-              <span className="font-medium">{Object.keys(remoteCursors).length}</span>
+              <span className="font-medium">{contentHighlights.length}</span>
             </div>
           </div>
         )}
         
-        {/* Remote cursors as actual text cursors */}
-        {doc && userId && isConnected && (
-          <div className="absolute inset-0 pointer-events-none">
-            {Object.values(remoteCursors).map((cursor) => (
-              <div
-                key={cursor.userId}
-                className="absolute pointer-events-none"
-                style={{
-                  left: cursor.position.x,
-                  top: cursor.position.y,
-                  transform: "translate(-50%, -50%)",
-                }}
-              >
-                {/* Real text cursor style */}
+        {/* Content highlights */}
+        {contentHighlights.map((highlight) => (
+          <div
+            key={highlight.id}
+            className="absolute group pointer-events-none z-40"
+            style={{
+              top: highlight.position.top,
+              left: highlight.position.left,
+            }}
+          >
+            {/* Subtle highlight background */}
+            <div
+              className="w-2 h-2 rounded-full opacity-30 group-hover:opacity-60 transition-opacity"
+              style={{ backgroundColor: highlight.color }}
+            />
+            
+            {/* Tooltip on hover */}
+            <div className="absolute top-full left-0 mt-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 min-w-[200px] border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 mb-1">
                 <div 
-                  className="w-px h-5 bg-black animate-pulse"
-                  style={{
-                    boxShadow: `0 0 0 1px ${cursor.color}40`,
-                  }}
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: highlight.color }}
                 />
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {highlight.userName}
+                </span>
               </div>
-            ))}
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {highlight.content}
+              </p>
+              <div className="text-xs text-gray-400 mt-1">
+                Just now
+              </div>
+            </div>
           </div>
-        )}
+        ))}
       </div>
     </div>
   )
