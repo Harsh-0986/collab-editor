@@ -3,23 +3,67 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 
+const MAX_CONTENT_LENGTH = 50000
+
+interface GeminiResponse {
+  candidates: Array<{
+    content: {
+      parts: Array<{ text: string }>
+    }
+  }>
+}
+
+async function callGemini(prompt: string): Promise<string> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY
+  if (!apiKey) {
+    throw new Error("GOOGLE_AI_API_KEY not configured")
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 4096,
+        },
+      }),
+    },
+  )
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Gemini API error: ${response.status} ${errorText}`)
+  }
+
+  const data: GeminiResponse = await response.json()
+  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { documentId, action, content } = await request.json()
 
-    // Get document to check permissions
+    if (!documentId || !action || !content) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    if (content.length > MAX_CONTENT_LENGTH) {
+      return NextResponse.json({ error: "Content exceeds maximum length" }, { status: 413 })
+    }
+
     const document = await prisma.document.findUnique({
       where: { id: documentId },
       include: {
-        members: {
-          where: { userId: session.user.id },
-        },
+        members: { where: { userId: session.user.id } },
       },
     })
 
@@ -27,77 +71,66 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 })
     }
 
-    // Check if user has edit permissions
     const canEdit = document.ownerId === session.user.id ||
-      document.members.some((member: { userId: string; role: string }) => 
-        member.userId === session.user.id && 
-        ["OWNER", "EDITOR"].includes(member.role)
+      document.members.some((m: { userId: string; role: string }) =>
+        m.userId === session.user.id && ["OWNER", "EDITOR"].includes(m.role)
       )
 
     if (!canEdit) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
-    let enhancedContent = content
-    let suggestions: string[] = []
+    const plainText = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
 
+    let systemPrompt: string
     switch (action) {
       case "grammar":
-        suggestions = ["Consider using more concise language", "Check for punctuation errors"]
-        break
-      case "structure":
-        enhancedContent = `<h1>Enhanced Document</h1><p>${content}</p><h2>Summary</h2><p>This document has been enhanced with better structure.</p>`
-        suggestions = ["Add headings and subheadings", "Use bullet points for lists"]
-        break
-      case "style":
-        enhancedContent = `<p style="font-family: Arial, sans-serif; line-height: 1.6;">${content}</p>`
-        suggestions = ["Improve readability with better formatting", "Use consistent styling"]
+        systemPrompt = `You are a professional editor. Fix grammar, spelling, and punctuation in the following text. Preserve the original meaning and structure. Return only the corrected text:\n\n${plainText}`
         break
       case "summarize":
-        const words = content.split(" ")
-        const summary = words.slice(0, 50).join(" ") + (words.length > 50 ? "..." : "")
-        enhancedContent = `<h2>Summary</h2><p>${summary}</p><h2>Original Content</h2><p>${content}</p>`
-        suggestions = ["Consider key points", "Remove unnecessary details"]
+        systemPrompt = `Summarize the following text concisively while preserving key points:\n\n${plainText}`
+        break
+      case "enhance":
+        systemPrompt = `Improve the clarity and professionalism of the following text. Fix awkward phrasing and improve flow:\n\n${plainText}`
+        break
+      case "translate":
+        systemPrompt = `Translate the following text to English:\n\n${plainText}`
         break
       default:
-        suggestions = ["No specific action taken"]
+        return NextResponse.json({ error: "Unknown action" }, { status: 400 })
     }
 
-    // Create operation for the AI enhancement
-    const operation = await prisma.operation.create({
+    let result: string
+    try {
+      result = await callGemini(systemPrompt)
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("not configured")) {
+        return NextResponse.json({
+          enhancedContent: content,
+          suggestions: ["AI is not configured. Set GOOGLE_AI_API_KEY to enable AI features."],
+        })
+      }
+      throw err
+    }
+
+    await prisma.operation.create({
       data: {
         documentId,
         version: document.version + 1,
         type: "AI_ENHANCEMENT",
-        data: {
-          action,
-          suggestions,
-          originalContent: content,
-          enhancedContent,
-        },
+        data: { action, originalContent: content, enhancedContent: result },
         createdBy: session.user.id,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
       },
     })
 
     return NextResponse.json({
-      enhancedContent,
-      suggestions,
-      operation,
+      enhancedContent: result,
+      suggestions: [`${action} applied successfully`],
     })
   } catch (error) {
-    console.error("Error processing AI request:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({
+      enhancedContent: null,
+      suggestions: ["AI processing failed. Please try again."],
+    })
   }
 }

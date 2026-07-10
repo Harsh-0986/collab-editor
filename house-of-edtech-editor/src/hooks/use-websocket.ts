@@ -52,7 +52,7 @@ export function useWebSocket({
 
     // Connection events
     socket.on("connect", () => {
-      console.log("Connected to WebSocket server")
+      // removed
       setIsConnected(true)
       
       // Join the document room

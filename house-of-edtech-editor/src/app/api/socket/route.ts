@@ -32,12 +32,10 @@ export async function POST(request: NextRequest) {
 
       // Handle connections
       io.on("connection", (socket) => {
-        console.log(`User connected: ${socket.id} to document ${documentId}`)
 
         // Join document room
         socket.on("join-document", (docId: string) => {
           socket.join(docId)
-          console.log(`User ${socket.id} joined document ${docId}`)
           
           // Send current document state
           const document = documents.get(docId)
@@ -105,7 +103,6 @@ export async function POST(request: NextRequest) {
 
         // Handle disconnection
         socket.on("disconnect", () => {
-          console.log(`User disconnected: ${socket.id} from document ${documentId}`)
           
           // Notify other users in document rooms
           io.sockets.adapter.rooms.forEach((room, roomId) => {

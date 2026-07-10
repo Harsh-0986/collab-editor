@@ -3,47 +3,37 @@
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { 
-  Bold, 
-  Italic, 
-  List, 
-  ListOrdered, 
-  Quote, 
-  Undo, 
+import {
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  Undo,
   Redo,
   Save,
   Users,
-  History
+  History,
 } from "lucide-react"
 import { Header } from "./header"
+import { useLocalDocument, useSyncStatus } from "@/hooks/use-local-document"
 
 interface DocumentEditorProps {
   documentId: string
-  documentTitle: string
-  onTitleChange: (title: string) => void
-  onShowUsers?: () => void
-  onShowHistory?: () => void
 }
 
-export function DocumentEditor({ 
-  documentId, 
-  documentTitle, 
-  onTitleChange,
-  onShowUsers,
-  onShowHistory
-}: DocumentEditorProps) {
+export function DocumentEditor({ documentId }: DocumentEditorProps) {
+  const { doc, loading, updateTitle, updateContent, saveSnapshot, pendingOps } =
+    useLocalDocument(documentId)
+  const syncStatus = useSyncStatus()
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [collaborators, setCollaborators] = useState<Array<{
-    id: string
-    name: string
-    color: string
-    cursor: { top: number; left: number }
-  }>>([])
-  
+  const lastContentRef = useRef("")
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -55,46 +45,74 @@ export function DocumentEditor({
     autofocus: "end",
   })
 
-  const handleAutoSave = () => {
-    if (!editor) return
-    
-    const content = editor.getHTML()
-    // In a real app, this would save to the database
-    console.log("Auto-saving content:", content)
-    setIsSaving(true)
-    
-    // Simulate save delay
-    setTimeout(() => {
-      setIsSaving(false)
-      setLastSaved(new Date())
-    }, 1000)
-  }
+  useEffect(() => {
+    if (editor && doc && doc.content !== lastContentRef.current) {
+      lastContentRef.current = doc.content
+      if (editor.getHTML() !== doc.content) {
+        editor.commands.setContent(doc.content, false)
+      }
+    }
+  }, [doc?.content, editor])
 
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTitle = e.target.value
-    onTitleChange(newTitle)
-  }
+  const handleEditorUpdate = useCallback(() => {
+    if (!editor || !doc) return
+    const html = editor.getHTML()
+    if (html === lastContentRef.current) return
+
+    lastContentRef.current = html
+
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(() => {
+      updateContent(html)
+    }, 300)
+  }, [editor, doc, updateContent])
 
   useEffect(() => {
     if (!editor) return
-
-    editor.on("update", handleAutoSave)
-    
+    editor.on("update", handleEditorUpdate)
     return () => {
-      editor.off("update", handleAutoSave)
+      editor.off("update", handleEditorUpdate)
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [editor])
+  }, [editor, handleEditorUpdate])
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    await saveSnapshot()
+    setLastSaved(new Date())
+    setIsSaving(false)
+  }
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    updateTitle(e.target.value)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header />
+        <div className="flex items-center justify-center h-[80vh]">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 w-64 bg-gray-200 rounded" />
+            <div className="h-4 w-96 bg-gray-200 rounded" />
+            <div className="h-4 w-80 bg-gray-200 rounded" />
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const MenuBar = () => {
     if (!editor) return null
 
     return (
-      <div className="flex items-center gap-1 border-b p-2">
+      <div className="flex items-center gap-1 border-b p-2 flex-wrap">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => editor.chain().focus().toggleBold().run()}
-          className={editor.isActive("bold") ? "bg-gray-200" : ""}
+          data-active={editor.isActive("bold")}
+          className="data-[active=true]:bg-gray-200"
         >
           <Bold className="h-4 w-4" />
         </Button>
@@ -102,7 +120,8 @@ export function DocumentEditor({
           variant="ghost"
           size="sm"
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          className={editor.isActive("italic") ? "bg-gray-200" : ""}
+          data-active={editor.isActive("italic")}
+          className="data-[active=true]:bg-gray-200"
         >
           <Italic className="h-4 w-4" />
         </Button>
@@ -111,7 +130,8 @@ export function DocumentEditor({
           variant="ghost"
           size="sm"
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className={editor.isActive("bulletList") ? "bg-gray-200" : ""}
+          data-active={editor.isActive("bulletList")}
+          className="data-[active=true]:bg-gray-200"
         >
           <List className="h-4 w-4" />
         </Button>
@@ -119,7 +139,8 @@ export function DocumentEditor({
           variant="ghost"
           size="sm"
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          className={editor.isActive("orderedList") ? "bg-gray-200" : ""}
+          data-active={editor.isActive("orderedList")}
+          className="data-[active=true]:bg-gray-200"
         >
           <ListOrdered className="h-4 w-4" />
         </Button>
@@ -127,7 +148,8 @@ export function DocumentEditor({
           variant="ghost"
           size="sm"
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
-          className={editor.isActive("blockquote") ? "bg-gray-200" : ""}
+          data-active={editor.isActive("blockquote")}
+          className="data-[active=true]:bg-gray-200"
         >
           <Quote className="h-4 w-4" />
         </Button>
@@ -149,89 +171,74 @@ export function DocumentEditor({
           <Redo className="h-4 w-4" />
         </Button>
         <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onShowUsers}
-        >
-          <Users className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onShowHistory}
-        >
-          <History className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleAutoSave}
-          disabled={isSaving}
-        >
-          <Save className="h-4 w-4" />
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <div
+            className={`h-2 w-2 rounded-full ${
+              syncStatus === "syncing"
+                ? "bg-blue-500 animate-pulse"
+                : syncStatus === "offline"
+                  ? "bg-yellow-500"
+                  : syncStatus === "error"
+                    ? "bg-red-500"
+                    : "bg-green-500"
+            }`}
+          />
+          <span>
+            {syncStatus === "syncing"
+              ? "Syncing..."
+              : syncStatus === "offline"
+                ? "Offline"
+                : syncStatus === "error"
+                  ? "Sync error"
+                  : "Saved"}
+          </span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <Header 
-        documentTitle={documentTitle}
-        onNewDocument={() => console.log("New document")}
-        onShowUsers={onShowUsers}
-      />
-      
-      <div className="flex flex-col h-[calc(100vh-4rem)]">
-        {/* Title input */}
+    <div className="min-h-screen bg-white flex flex-col">
+      <Header documentTitle={doc?.title} />
+
+      <div className="flex flex-col flex-1">
         <div className="border-b px-6 py-4">
           <Input
-            value={documentTitle}
+            value={doc?.title ?? ""}
             onChange={handleTitleChange}
             className="text-xl font-semibold border-none px-0 focus-visible:ring-0"
             placeholder="Document title..."
           />
-          {lastSaved && (
-            <p className="text-sm text-gray-500 mt-1">
-              Last saved: {lastSaved.toLocaleTimeString()}
-            </p>
-          )}
+          <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+            {lastSaved && <span>Last saved: {lastSaved.toLocaleTimeString()}</span>}
+            {pendingOps > 0 && <span>{pendingOps} pending change{pendingOps !== 1 ? "s" : ""}</span>}
+          </div>
         </div>
-        
-        {/* Editor toolbar */}
+
         <MenuBar />
-        
-        {/* Editor content */}
+
         <div className="flex-1 overflow-auto">
           <EditorContent
             editor={editor}
-            className="prose prose-sm max-w-none p-6 focus:outline-none"
+            className="prose prose-sm max-w-none p-6 focus:outline-none min-h-[60vh]"
           />
-          
-          {/* Collaboration cursors */}
-          {collaborators.map((collaborator) => (
-            <div
-              key={collaborator.id}
-              className="absolute pointer-events-none"
-              style={{
-                top: collaborator.cursor.top,
-                left: collaborator.cursor.left,
-              }}
-            >
-              <div
-                className="w-0 h-0 border-l-2 border-r-2 border-b-4 border-transparent border-b-blue-500"
-                style={{ transform: "translateY(-100%)" }}
-              />
-              <div
-                className="bg-blue-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap"
-                style={{ transform: "translateY(-100%)" }}
-              >
-                {collaborator.name}
-              </div>
-            </div>
-          ))}
+        </div>
+
+        <div className="border-t px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => {}}>
+              <Users className="h-4 w-4 mr-2" />
+              Users
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => {}}>
+              <History className="h-4 w-4 mr-2" />
+              History
+            </Button>
+          </div>
+          <Button variant="default" size="sm" onClick={handleSave} disabled={isSaving}>
+            <Save className="h-4 w-4 mr-2" />
+            {isSaving ? "Saving..." : "Save Snapshot"}
+          </Button>
         </div>
       </div>
     </div>
