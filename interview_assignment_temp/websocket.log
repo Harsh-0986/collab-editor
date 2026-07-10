@@ -1,0 +1,134 @@
+WebSocket server running on port 3001
+Client connected: 4u0Aj83yMQe94I_gAAAB
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client connected: 0kgu48tS9AbRVRcHAAAD
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client connected: k3Nmn0uxoNh9YUasAAAF
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client connected: y77NUu1Q_LGQ8kI2AAAH
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client connected: ql4kgR530kQMAbWMAAAJ
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client connected: Sv3LhPrrzQoVVOWzAAAL
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client disconnected: 0kgu48tS9AbRVRcHAAAD
+Client disconnected: k3Nmn0uxoNh9YUasAAAF
+Client disconnected: y77NUu1Q_LGQ8kI2AAAH
+Client disconnected: ql4kgR530kQMAbWMAAAJ
+Client disconnected: Sv3LhPrrzQoVVOWzAAAL
+Client connected: le38OfA-sOKT-UxTAAAN
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client connected: 22BhlFO1dEd3hmA1AAAQ
+Client connected: 817aGCPy275Ahjx-AAAR
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client disconnected: 4u0Aj83yMQe94I_gAAAB
+Client disconnected: le38OfA-sOKT-UxTAAAN
+Client connected: neFKaG4PpK-CyNftAAAT
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client disconnected: neFKaG4PpK-CyNftAAAT
+Client disconnected: 817aGCPy275Ahjx-AAAR
+Client disconnected: 22BhlFO1dEd3hmA1AAAQ
+Client connected: 46bses0MmVi__uieAAAX
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client connected: S8WgGUxPM9sNkjUlAAAa
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client connected: sd0Y_5ucoMHMx1jRAAAd
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'a6501377-8d80-4622-afd6-da3cfaf93732',
+  userName: 'harsh'
+}
+Client connected: 3mLeJuXUVzh4FS8bAAAf
+Client connected: i7E880cSZUcZdtqmAAAg
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client connected: guw7uvL-W1UkVibxAAAi
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: 'bcc77260-b46c-4d8b-a9f0-57ec26df56b4',
+  userName: 'harsh2'
+}
+Client connected: 73IxwmQYVYkPgqooAAAl
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: '3bd58fa5-6476-41d3-aca8-4ac102e46cbf',
+  userName: 'editpr p'
+}
+Client connected: N522dLbbaIe1AbH0AAAn
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: '3bd58fa5-6476-41d3-aca8-4ac102e46cbf',
+  userName: 'editpr p'
+}
+Client connected: KJkYuBnl97XyOgsQAAAp
+User joined document: {
+  documentId: '6445cc34-e3eb-4df4-ac29-ed40633dfda0',
+  userId: '3bd58fa5-6476-41d3-aca8-4ac102e46cbf',
+  userName: 'editpr p'
+}
+Client disconnected: N522dLbbaIe1AbH0AAAn
+Client disconnected: KJkYuBnl97XyOgsQAAAp
+Client disconnected: 73IxwmQYVYkPgqooAAAl
+Client disconnected: 3mLeJuXUVzh4FS8bAAAf
+Client disconnected: guw7uvL-W1UkVibxAAAi
+Client disconnected: i7E880cSZUcZdtqmAAAg
+Client disconnected: sd0Y_5ucoMHMx1jRAAAd
+Client disconnected: S8WgGUxPM9sNkjUlAAAa
+Client disconnected: 46bses0MmVi__uieAAAX
