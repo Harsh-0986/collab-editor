@@ -117,7 +117,11 @@ async function main() {
   })
 
   console.log('✅ Database seeded successfully!')
-  console.log('Demo user created:', demoUser.email)
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log('  Email:    demo@houseofedtech.app')
+  console.log('  Password: demo123')
+  console.log('  Role:     OWNER')
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('Documents created:', welcomeDoc.title, 'and', projectDoc.title)
 }
 
